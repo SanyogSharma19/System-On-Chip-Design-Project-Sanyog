@@ -1,0 +1,258 @@
+$date
+	Thu Nov 13 15:21:38 2025
+$end
+$version
+	Icarus Verilog
+$end
+$timescale
+	1ps
+$end
+$scope module tb_multiplier $end
+$var wire 32 ! writeback_value_o [31:0] $end
+$var wire 1 " busy_o $end
+$var reg 1 # clk_i $end
+$var reg 1 $ hold_i $end
+$var reg 1 % opcode_invalid_i $end
+$var reg 32 & opcode_opcode_i [31:0] $end
+$var reg 32 ' opcode_pc_i [31:0] $end
+$var reg 5 ( opcode_ra_idx_i [4:0] $end
+$var reg 32 ) opcode_ra_operand_i [31:0] $end
+$var reg 5 * opcode_rb_idx_i [4:0] $end
+$var reg 32 + opcode_rb_operand_i [31:0] $end
+$var reg 5 , opcode_rd_idx_i [4:0] $end
+$var reg 1 - opcode_valid_i $end
+$var reg 1 . rst_i $end
+$scope module dut $end
+$var wire 1 # clk_i $end
+$var wire 1 $ hold_i $end
+$var wire 1 / mul_new_valid_w $end
+$var wire 1 0 mult_inst_w $end
+$var wire 1 % opcode_invalid_i $end
+$var wire 32 1 opcode_opcode_i [31:0] $end
+$var wire 32 2 opcode_pc_i [31:0] $end
+$var wire 5 3 opcode_ra_idx_i [4:0] $end
+$var wire 32 4 opcode_ra_operand_i [31:0] $end
+$var wire 5 5 opcode_rb_idx_i [4:0] $end
+$var wire 32 6 opcode_rb_operand_i [31:0] $end
+$var wire 5 7 opcode_rd_idx_i [4:0] $end
+$var wire 1 - opcode_valid_i $end
+$var wire 1 . rst_i $end
+$var wire 32 8 writeback_value_o [31:0] $end
+$var wire 65 9 mult_result_w [64:0] $end
+$var wire 1 " busy_o $end
+$var parameter 32 : MULT_STAGES $end
+$var parameter 32 ; MUL_PIPE_STAGES $end
+$var reg 2 < mul_valid_q [1:0] $end
+$var reg 1 = mulhi_sel_e1_q $end
+$var reg 33 > operand_a_e1_q [32:0] $end
+$var reg 33 ? operand_a_r [32:0] $end
+$var reg 33 @ operand_b_e1_q [32:0] $end
+$var reg 33 A operand_b_r [32:0] $end
+$var reg 32 B result_e2_q [31:0] $end
+$var reg 32 C result_e3_q [31:0] $end
+$var reg 32 D result_r [31:0] $end
+$upscope $end
+$scope task issue_mul $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+$comment Show the parameter values. $end
+$dumpall
+b10 ;
+b10 :
+$end
+#0
+$dumpvars
+b0 D
+b0 C
+b0 B
+b0 A
+b0 @
+b0 ?
+b0 >
+0=
+b0 <
+b0 9
+b0 8
+b1 7
+b0 6
+b11 5
+b0 4
+b10 3
+b0 2
+b0 1
+00
+0/
+1.
+0-
+b1 ,
+b0 +
+b11 *
+b0 )
+b10 (
+b0 '
+b0 &
+0%
+0$
+0#
+0"
+b0 !
+$end
+#5000
+1#
+#10000
+0#
+#15000
+1#
+#20000
+0#
+#25000
+1/
+10
+b111 A
+b11 ?
+1-
+b10000000000000000000110011 &
+b10000000000000000000110011 1
+b111 +
+b111 6
+b11 )
+b11 4
+0.
+1#
+#30000
+0#
+#35000
+1"
+b1 <
+0/
+0-
+1#
+#40000
+0#
+#45000
+b10 <
+1#
+#50000
+0#
+#55000
+0"
+b0 <
+1#
+#60000
+0#
+#65000
+1#
+#70000
+0#
+#75000
+1#
+#80000
+0#
+#85000
+1=
+b10101 9
+b111 @
+b11 >
+1/
+b111111111111111111111111111111110 ?
+1-
+b10000000000001000000110011 &
+b10000000000001000000110011 1
+b11111111111111111111111111111110 )
+b11111111111111111111111111111110 4
+1#
+#90000
+0#
+#95000
+0=
+b0 @
+b0 9
+b0 >
+1"
+b1 <
+0/
+0-
+1#
+#100000
+0#
+#105000
+b10 <
+1#
+#110000
+0#
+#115000
+0"
+b0 <
+1#
+#120000
+0#
+#125000
+1#
+#130000
+0#
+#135000
+1#
+#140000
+0#
+#145000
+b11111111111111111111111111111111 D
+1=
+b11111111111111111111111111111111111111111111111111111111111110010 9
+b111 @
+b111111111111111111111111111111110 >
+1/
+b1111111111111111 A
+b11111111111111110000000000000000 ?
+1-
+b10000000000011000000110011 &
+b10000000000011000000110011 1
+b1111111111111111 +
+b1111111111111111 6
+b11111111111111110000000000000000 )
+b11111111111111110000000000000000 4
+1#
+#150000
+0#
+#155000
+b0 D
+0=
+b0 @
+b0 9
+b0 >
+b11111111111111111111111111111111 !
+b11111111111111111111111111111111 8
+b11111111111111111111111111111111 B
+1"
+b1 <
+0/
+0-
+1#
+#160000
+0#
+#165000
+b10 <
+b11111111111111111111111111111111 C
+b0 !
+b0 8
+b0 B
+1#
+#170000
+0#
+#175000
+b0 C
+0"
+b0 <
+1#
+#180000
+0#
+#185000
+1#
+#190000
+0#
+#195000
+1#
+#200000
+0#
+#205000
+1#
