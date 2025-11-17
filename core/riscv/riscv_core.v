@@ -540,18 +540,13 @@ u_div
     ,.writeback_value_o(writeback_div_value_w)
 );
 
-
 riscv_issue
 #(
-     .SUPPORT_REGFILE_XILINX(SUPPORT_REGFILE_XILINX)
-    ,.SUPPORT_LOAD_BYPASS(SUPPORT_LOAD_BYPASS)
-    ,.SUPPORT_MULDIV(SUPPORT_MULDIV)
-    ,.SUPPORT_MUL_BYPASS(SUPPORT_MUL_BYPASS)
-    ,.SUPPORT_DUAL_ISSUE(1)
-    //telemetry
-    ,.retire_pulse_o(retire_pulse_w)
-    ,.stall_cycle_o(stall_cycle_w)
-
+     .SUPPORT_MULDIV         (SUPPORT_MULDIV)
+    ,.SUPPORT_DUAL_ISSUE     (1)
+    ,.SUPPORT_LOAD_BYPASS    (SUPPORT_LOAD_BYPASS)
+    ,.SUPPORT_MUL_BYPASS     (SUPPORT_MUL_BYPASS)
+    ,.SUPPORT_REGFILE_XILINX (SUPPORT_REGFILE_XILINX)
 )
 u_issue
 (
@@ -650,7 +645,13 @@ u_issue
     ,.exec_hold_o(exec_hold_w)
     ,.mul_hold_o(mul_hold_w)
     ,.interrupt_inhibit_o(interrupt_inhibit_w)
+
+    // Telemetry outputs
+    ,.retire_pulse_o(retire_pulse_w)
+    ,.stall_cycle_o(stall_cycle_w)
 );
+
+
 
 
 riscv_fetch
