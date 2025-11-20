@@ -101,7 +101,6 @@ module tcm_mem
 );
 
 
-
 //-------------------------------------------------------------
 // AXI -> PMEM Interface
 //-------------------------------------------------------------
@@ -160,39 +159,30 @@ u_conv
     .ram_write_data_o(ext_write_data_w)
 );
 
-//-------------------------------------------------------------
-// Dual Port RAM
-//-------------------------------------------------------------
 
-// Mux access to the 2nd port between external access and CPU data access
-wire [13:0] muxed_addr_w = ext_accept_w ? ext_addr_w[15:2] : mem_d_addr_i[15:2];
-wire [31:0] muxed_data_w = ext_accept_w ? ext_write_data_w : mem_d_data_wr_i;
-wire [3:0]  muxed_wr_w   = ext_accept_w ? ext_wr_w         : mem_d_wr_i;
-wire [31:0] data_r_w;
+//-------------------------------------------------------------
+// No data TCM: only instruction ITCM + AXI slave
+//-------------------------------------------------------------
+// We remove tcm_mem_ram completely. For now, the AXI-mapped
+// "RAM" behind tcm_mem_pmem simply returns zeros.
+assign ext_read_data_w = 32'b0;
 
-tcm_mem_ram
-u_ram
+
+//-----------------------------------------------------------------
+// Instruction Fetch TCM: 32KB macro-based single-port memory
+//-----------------------------------------------------------------
+tcm_sram32k_sp
+u_itcm
 (
-    // Instruction fetch
-     .clk0_i(clk_i)
-    ,.rst0_i(rst_i)
-    ,.addr0_i(mem_i_pc_i[15:2])
-    ,.data0_i(32'b0)
-    ,.wr0_i(4'b0)
-
-    // External access / Data access
-    ,.clk1_i(clk_i)
-    ,.rst1_i(rst_i)
-    ,.addr1_i(muxed_addr_w)
-    ,.data1_i(muxed_data_w)
-    ,.wr1_i(muxed_wr_w)
-
-    // Outputs
-    ,.data0_o(mem_i_inst_o)
-    ,.data1_o(data_r_w)
+    .clk_i   (clk_i),
+    // 32KB TCM: 8k x 32 -> 13-bit word address [12:0]
+    .addr_i  (mem_i_pc_i[14:2]),
+    .wdata_i (32'b0),
+    .wstrb_i (4'b0000),
+    .we_i    (1'b0),
+    .rdata_o (mem_i_inst_o)
 );
 
-assign ext_read_data_w = data_r_w;
 
 //-------------------------------------------------------------
 // Instruction Fetch
@@ -208,6 +198,7 @@ else
 assign mem_i_accept_o  = 1'b1;
 assign mem_i_valid_o   = mem_i_valid_q;
 assign mem_i_error_o   = 1'b0;
+
 
 //-------------------------------------------------------------
 // Data Access / Incoming external access
@@ -251,7 +242,10 @@ else
 
 assign mem_d_ack_o          = mem_d_ack_q;
 assign mem_d_resp_tag_o     = mem_d_tag_q;
-assign mem_d_data_rd_o      = data_r_w;
+
+// No data TCM: return zeros on data reads
+assign mem_d_data_rd_o      = 32'b0;
+
 assign mem_d_error_o        = 1'b0;
 
 assign mem_d_accept_o       = mem_d_accept_q;
@@ -260,36 +254,10 @@ assign ext_ack_w            = ext_ack_q;
 
 `ifdef verilator
 //-------------------------------------------------------------
-// write: Write byte into memory
+// write/read helpers were using u_ram; now removed.
+// You can either delete them or leave them stubbed if needed.
 //-------------------------------------------------------------
-function write; /*verilator public*/
-    input [31:0] addr;
-    input [7:0]  data;
-begin
-    case (addr[1:0])
-    2'd0: u_ram.ram[addr/4][7:0]   = data;
-    2'd1: u_ram.ram[addr/4][15:8]  = data;
-    2'd2: u_ram.ram[addr/4][23:16] = data;
-    2'd3: u_ram.ram[addr/4][31:24] = data;
-    endcase
-end
-endfunction
-//-------------------------------------------------------------
-// read: Read byte from memory
-//-------------------------------------------------------------
-function [7:0] read; /*verilator public*/
-    input [31:0] addr;
-begin
-    case (addr[1:0])
-    2'd0: read = u_ram.ram[addr/4][7:0];
-    2'd1: read = u_ram.ram[addr/4][15:8];
-    2'd2: read = u_ram.ram[addr/4][23:16];
-    2'd3: read = u_ram.ram[addr/4][31:24];
-    endcase
-end
-endfunction
 `endif
 
-
-
 endmodule
+
