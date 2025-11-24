@@ -108,8 +108,8 @@ module tcm_sram32k_sp
                 .BWEB   (BWEB_bus[g]),// [63:0] active low
 
                 // Test mode selects (no test)
-                .RTSEL  (2'b00),
-                .WTSEL  (2'b00),
+                .RTSEL  (2'b01),
+                .WTSEL  (2'b01),
                 .Q      (Q_bus[g])    // [63:0]
             );
         end
