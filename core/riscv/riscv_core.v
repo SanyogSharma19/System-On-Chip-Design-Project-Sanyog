@@ -239,6 +239,20 @@ wire          mul_busy_w;          // from riscv_multiplier.u_mul
 // 5. mul_busy_cycles: counts cycles while multiplier is busy
 reg  [31:0]   mul_busy_cycles_q;
 
+// --- Trace buffer signals ---
+localparam int TRACE_DEPTH     = 64;
+localparam int TRACE_PTR_BITS  = $clog2(TRACE_DEPTH);
+
+wire [TRACE_PTR_BITS-1:0] trace_wr_ptr_w;
+wire                      trace_triggered_w;
+
+wire [31:0]               trace_rd_pc_w;
+wire [31:0]               trace_rd_instr_w;
+
+// For now, we hard-wire read address to 0 (just to keep it legal).
+// Later we'll drive rd_addr from MMIO.
+wire [TRACE_PTR_BITS-1:0] trace_rd_addr_w = '0;
+
 always @(posedge clk_i or posedge rst_i)
 begin
     if (rst_i)
@@ -478,7 +492,9 @@ u_csr
     ,.mmu_satp_o(mmu_satp_w)
 );
 
-//telemetry instance
+// ---------------------------------------------------------------------
+// Telemetry counters (already there)
+// ---------------------------------------------------------------------
 telemetry_counters u_tlm_cnt (
   .clk          (clk_i),
   .rst_n        (~rst_i),
@@ -493,6 +509,32 @@ telemetry_counters u_tlm_cnt (
 assign tlm_mcycle_o   = tlm_mcycle_w;
 assign tlm_minstret_o = tlm_minstret_w;
 assign tlm_stall_o    = tlm_stall_w;
+
+// ---------------------------------------------------------------------
+// Trace buffer instance (PC + opcode at retire)
+// ---------------------------------------------------------------------
+// Trigger choice for now: freeze when an interrupt is taken.
+// You can later change trigger_i to a SW-controlled bit.
+trace_buffer #(
+  .DEPTH    (TRACE_DEPTH),
+  .PTR_BITS (TRACE_PTR_BITS)
+) u_trace_buf (
+  .clk_i          (clk_i),
+  .rst_ni         (~rst_i),
+
+  .enable_i       (1'b1),            // always logging for now
+  .trigger_i      (take_interrupt_w),// freeze when interrupt taken
+  .retire_valid_i (retire_pulse_w),  // one per retired instruction
+  .pc_i           (opcode_pc_w),     // PC of instruction
+  .instr_i        (opcode_opcode_w), // opcode
+
+  .triggered_o    (trace_triggered_w),
+  .wr_ptr_o       (trace_wr_ptr_w),
+
+  .rd_addr_i      (trace_rd_addr_w),
+  .rd_pc_o        (trace_rd_pc_w),
+  .rd_instr_o     (trace_rd_instr_w)
+);
 
 
 
