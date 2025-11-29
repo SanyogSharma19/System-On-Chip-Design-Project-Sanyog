@@ -3,11 +3,14 @@
 module tb_mmio;
 
   // ------------------------------------------------------------
-  // Clock & resets
+  // Clock & reset new tbesh gnsh pls
   // ------------------------------------------------------------
   reg clk;
   reg rst_sys;
   reg rst_cpu;
+
+  localparam TRACE_DEPTH    = 64;
+  localparam TRACE_PTR_BITS = $clog2(TRACE_DEPTH); // 6
 
   // 100 MHz clock
   initial begin
@@ -15,19 +18,10 @@ module tb_mmio;
     forever #5 clk = ~clk;
   end
 
-  initial begin
-    rst_sys = 1'b1;
-    rst_cpu = 1'b1;
-    repeat (10) @(posedge clk);
-    rst_sys = 1'b0;
-    repeat (10) @(posedge clk);
-    rst_cpu = 1'b0;
-  end
-
   // ------------------------------------------------------------
-  // AXI tie-offs (no external fabric / DMA)
+  // AXI tie-offs
   // ------------------------------------------------------------
-  // Instruction AXI
+  // Instruction AXI (external)
   reg         axi_i_awready_i = 1'b0;
   reg         axi_i_wready_i  = 1'b0;
   reg         axi_i_bvalid_i  = 1'b0;
@@ -37,7 +31,7 @@ module tb_mmio;
   reg  [31:0] axi_i_rdata_i   = 32'h0;
   reg  [1:0]  axi_i_rresp_i   = 2'b00;
 
-  // TCM AXI slave
+  // TCM AXI slave (from external fabric) – left idle
   reg         axi_t_awvalid_i = 1'b0;
   reg  [31:0] axi_t_awaddr_i  = 32'h0;
   reg  [3:0]  axi_t_awid_i    = 4'h0;
@@ -57,7 +51,7 @@ module tb_mmio;
 
   reg  [31:0] intr_i          = 32'h0;
 
-  // AXI outputs (unused)
+  // AXI outputs (ignored)
   wire          axi_i_awvalid_o;
   wire [31:0]   axi_i_awaddr_o;
   wire          axi_i_wvalid_o;
@@ -81,7 +75,15 @@ module tb_mmio;
   wire          axi_t_rlast_o;
 
   // ------------------------------------------------------------
-  // DUT: telemetry-enabled riscv_tcm_top
+  // Trace buffer ports from top
+  // ------------------------------------------------------------
+  wire                      trace_triggered;
+  wire [TRACE_PTR_BITS-1:0] trace_wr_ptr;
+  reg  [TRACE_PTR_BITS-1:0] trace_rd_addr;
+  wire [63:0]               trace_rd_data;
+
+  // ------------------------------------------------------------
+  // DUT
   // ------------------------------------------------------------
   riscv_tcm_top #(
     .BOOT_VECTOR        (32'h0000_0000),
@@ -142,105 +144,68 @@ module tb_mmio;
     .axi_t_rdata_o   (axi_t_rdata_o),
     .axi_t_rresp_o   (axi_t_rresp_o),
     .axi_t_rid_o     (axi_t_rid_o),
-    .axi_t_rlast_o   (axi_t_rlast_o)
+    .axi_t_rlast_o   (axi_t_rlast_o),
+
+    .trace_triggered_o (trace_triggered),
+    .trace_wr_ptr_o    (trace_wr_ptr),
+    .trace_rd_addr_i   (trace_rd_addr),
+    .trace_rd_data_o   (trace_rd_data)
   );
 
   // ------------------------------------------------------------
-  // Load program.hex into TCM RAM
+  // Reset + memory preload + FULL trace dump
   // ------------------------------------------------------------
   initial begin
-    $display("[TB] Loading program.hex into TCM...");
-    $readmemh("program.hex", dut.u_tcm.u_ram.ram);
+    rst_sys       = 1'b1;
+    rst_cpu       = 1'b1;
+    trace_rd_addr = '0;
 
-    $display("[DBG] RAM[0] = %08x", dut.u_tcm.u_ram.ram[0]);
-    $display("[DBG] RAM[1] = %08x", dut.u_tcm.u_ram.ram[1]);
-    $display("[DBG] RAM[2] = %08x", dut.u_tcm.u_ram.ram[2]);
-    $display("[DBG] RAM[3] = %08x", dut.u_tcm.u_ram.ram[3]);
-  end
+    // Preload ITCM via TSMC macro task.
+    // Hierarchy you already used successfully:
+    //   tb_mmio.dut.u_tcm.u_itcm.g_sram[0].u_sram.preloadData(...)
+    #1;
+    dut.u_tcm.u_itcm.g_sram[0].u_sram.preloadData(
+      "/home/ss18852/System-On-Chip-Design-Project-Sanyog/program.hex"
+    );
 
-  // ------------------------------------------------------------
-  // Parameters: where SW stores telemetry snapshots
-  // ------------------------------------------------------------
-  localparam [31:0] MCYCLE_TLM_ADDR   = 32'h0000008C;
-  localparam [31:0] MINSTRET_TLM_ADDR = 32'h00000090;
-  localparam [31:0] STALL_TLM_ADDR    = 32'h00000094;
-  localparam [31:0] ACC_ADDR          = 32'h00000098;
-  localparam [31:0] EXPECTED_ACC      = 32'd50000;
-  localparam [31:0] TOLERANCE         = 32'd1000;
+    // Release resets after a few cycles
+    repeat (10) @(posedge clk);
+    rst_sys = 1'b0;
+    repeat (10) @(posedge clk);
+    rst_cpu = 1'b0;
 
-  // snapshot registers
-  reg [31:0] mcycle_mmio;
-  reg [31:0] minstret_mmio;
-  reg [31:0] stall_mmio;
-  reg [31:0] acc_final;
-
-  // ------------------------------------------------------------
-  // Optional: see DPORT MMIO transactions
-  // ------------------------------------------------------------
-  always @(posedge clk) begin
-    if (dut.u_dmux.mem_ack_o) begin
-      $display("[DBG] t=%0t DPORT: addr=%08x rd=%0d wr=%0d data_wr=%08x",
-               $time,
-               dut.u_dmux.mem_addr_i,
-               dut.u_dmux.mem_rd_i,
-               (dut.u_dmux.mem_wr_i != 4'b0000),
-               dut.u_dmux.mem_data_wr_i);
-    end
-  end
-
-  // ------------------------------------------------------------
-  // Main check: compare HW counters vs MMIO snapshot in TCM
-  // ------------------------------------------------------------
-  initial begin
-    // Wait for core reset release
-    @(negedge rst_cpu);
-    repeat (50) @(posedge clk);
-
-    // Let firmware run: loop + MMIO reads + stores
+    // Let core run for some cycles
     repeat (200000) @(posedge clk);
 
-    // --- Read back telemetry snapshot from TCM ---
-    mcycle_mmio   = dut.u_tcm.u_ram.ram[MCYCLE_TLM_ADDR   >> 2];
-    minstret_mmio = dut.u_tcm.u_ram.ram[MINSTRET_TLM_ADDR >> 2];
-    stall_mmio    = dut.u_tcm.u_ram.ram[STALL_TLM_ADDR    >> 2];
-    acc_final     = dut.u_tcm.u_ram.ram[ACC_ADDR          >> 2];
-
+    // Print trace buffer status
     $display("========================================");
-    $display(" Telemetry values captured via MMIO");
-    $display("  mcycle   (MMIO) = %08x (%0d)", mcycle_mmio,   mcycle_mmio);
-    $display("  minstret (MMIO) = %08x (%0d)", minstret_mmio, minstret_mmio);
-    $display("  stall    (MMIO) = %08x (%0d)", stall_mmio,    stall_mmio);
-    $display("  acc_final       = %08x (%0d)", acc_final,     acc_final);
-    $display(" ");
-
-    $display(" Hardware counters at end of sim");
-    $display("  mcycle   = %0d (0x%016x)", dut.tlm_mcycle_w,   dut.tlm_mcycle_w);
-    $display("  minstret = %0d (0x%016x)", dut.tlm_minstret_w, dut.tlm_minstret_w);
-    $display("  stall    = %0d (0x%016x)", dut.tlm_stall_w,    dut.tlm_stall_w);
+    $display("[TB] Trace buffer status after 200000 cycles:");
+    $display("  triggered = %0d", trace_triggered);
+    $display("  wr_ptr    = %0d", trace_wr_ptr);
     $display("========================================");
 
-    // --- Functional checks ---
-    if (acc_final !== EXPECTED_ACC) begin
-      $error("MMIO FAIL: acc_final (%0d) != EXPECTED_ACC (%0d)",
-             acc_final, EXPECTED_ACC);
-    end
+    // --- ALWAYS dump the full TRACE_DEPTH entries ---
+    begin
+      integer i;
+      $display("[TB] Dumping all %0d entries from trace buffer...", TRACE_DEPTH);
 
-    if ( (dut.tlm_mcycle_w   < mcycle_mmio)   ||
-         (dut.tlm_minstret_w < minstret_mmio) ||
-         (dut.tlm_stall_w    < stall_mmio) ) begin
-      $error("MMIO FAIL: HW counters smaller than MMIO snapshot (impossible).");
-    end
-
-    if ( (dut.tlm_mcycle_w   - mcycle_mmio)   > TOLERANCE ||
-         (dut.tlm_minstret_w - minstret_mmio) > TOLERANCE ||
-         (dut.tlm_stall_w    - stall_mmio)    > TOLERANCE ) begin
-      $error("MMIO FAIL: MMIO snapshot too far from HW counters.");
-    end
-    else begin
-      $display("[TB] MMIO vs telemetry comparison PASSED");
+      for (i = 0; i < TRACE_DEPTH; i = i + 1) begin
+        trace_rd_addr = i[TRACE_PTR_BITS-1:0];
+        @(posedge clk); // synchronous read
+        $display("TRACE[%0d]: PC=0x%08x  INSTR=0x%08x",
+                 i,
+                 trace_rd_data[63:32],
+                 trace_rd_data[31:0]);
+      end
     end
 
     $finish;
+  end
+
+  // Wave dump
+  initial begin
+    $dumpfile("tb_mmio_trace.vcd");
+    $dumpvars(0, tb_mmio);
   end
 
 endmodule

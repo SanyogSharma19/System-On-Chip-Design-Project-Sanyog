@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------
-//                         RISC-V Core
+//                         RISC-V Core new ones
 //                            V1.0.1
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
@@ -44,15 +44,15 @@ module riscv_core
 // Params
 //-----------------------------------------------------------------
 #(
-     parameter SUPPORT_MULDIV   = 1
-    ,parameter SUPPORT_SUPER    = 0
-    ,parameter SUPPORT_MMU      = 0
-    ,parameter SUPPORT_LOAD_BYPASS = 1
-    ,parameter SUPPORT_MUL_BYPASS = 1
-    ,parameter SUPPORT_REGFILE_XILINX = 0
-    ,parameter EXTRA_DECODE_STAGE = 0
-    ,parameter MEM_CACHE_ADDR_MIN = 32'h80000000
-    ,parameter MEM_CACHE_ADDR_MAX = 32'h8fffffff
+     parameter SUPPORT_MULDIV          = 1
+    ,parameter SUPPORT_SUPER           = 0
+    ,parameter SUPPORT_MMU             = 0
+    ,parameter SUPPORT_LOAD_BYPASS     = 1
+    ,parameter SUPPORT_MUL_BYPASS      = 1
+    ,parameter SUPPORT_REGFILE_XILINX  = 0
+    ,parameter EXTRA_DECODE_STAGE      = 0
+    ,parameter MEM_CACHE_ADDR_MIN      = 32'h80000000
+    ,parameter MEM_CACHE_ADDR_MAX      = 32'h8fffffff
 )
 //-----------------------------------------------------------------
 // Ports
@@ -88,13 +88,23 @@ module riscv_core
     ,output          mem_i_flush_o
     ,output          mem_i_invalidate_o
     ,output [ 31:0]  mem_i_pc_o
-    //telemetry
+
+    // Telemetry
     ,output [ 63:0]  tlm_mcycle_o
     ,output [ 63:0]  tlm_minstret_o
     ,output [ 63:0]  tlm_stall_o
 
+    // Trace-buffer external access
+    ,output          trace_triggered_o
+    ,output [5:0]    trace_wr_ptr_o
+    ,input  [5:0]    trace_rd_addr_i
+    ,output [31:0]   trace_rd_pc_o
+    ,output [31:0]   trace_rd_instr_o
 );
 
+//-----------------------------------------------------------------
+// Wires
+//-----------------------------------------------------------------
 wire           mmu_lsu_writeback_w;
 wire  [  1:0]  fetch_in_priv_w;
 wire  [  4:0]  mul_opcode_rd_idx_w;
@@ -220,6 +230,12 @@ wire           mmu_lsu_accept_w;
 wire  [ 31:0]  lsu_opcode_rb_operand_w;
 wire           mmu_sum_w;
 wire  [ 31:0]  writeback_exec_value_w;
+
+wire  [  4:0]  lsu_opcode_ra_idx_w;
+wire  [ 31:0]  csr_writeback_exception_pc_w;
+wire           mmu_store_fault_w;
+wire           branch_exec_is_call_w;
+
 // --- Telemetry event & counters ---
 wire          retire_pulse_w;
 wire          stall_cycle_w;
@@ -228,31 +244,23 @@ wire [63:0]   tlm_mcycle_w;
 wire [63:0]   tlm_minstret_w;
 wire [63:0]   tlm_stall_w;
 
-wire  [  4:0]  lsu_opcode_ra_idx_w;
-wire  [ 31:0]  csr_writeback_exception_pc_w;
-wire           mmu_store_fault_w;
-wire           branch_exec_is_call_w;
-
 // --- NEW: Multiplier busy signal & counter ---
 wire          mul_busy_w;          // from riscv_multiplier.u_mul
-
-// 5. mul_busy_cycles: counts cycles while multiplier is busy
 reg  [31:0]   mul_busy_cycles_q;
 
 // --- Trace buffer signals ---
 localparam int TRACE_DEPTH     = 64;
-localparam int TRACE_PTR_BITS  = $clog2(TRACE_DEPTH);
+localparam int TRACE_PTR_BITS  = 6;
 
 wire [TRACE_PTR_BITS-1:0] trace_wr_ptr_w;
 wire                      trace_triggered_w;
-
 wire [31:0]               trace_rd_pc_w;
 wire [31:0]               trace_rd_instr_w;
+wire [TRACE_PTR_BITS-1:0] trace_rd_addr_w;
 
-// For now, we hard-wire read address to 0 (just to keep it legal).
-// Later we'll drive rd_addr from MMIO.
-wire [TRACE_PTR_BITS-1:0] trace_rd_addr_w = '0;
-
+// ---------------------------------------------------------------------
+// Multiplier busy cycles counter
+// ---------------------------------------------------------------------
 always @(posedge clk_i or posedge rst_i)
 begin
     if (rst_i)
@@ -261,6 +269,38 @@ begin
         mul_busy_cycles_q <= mul_busy_cycles_q + 32'd1;
 end
 
+// ---------------------------------------------------------------------
+// Trace trigger based on retired instruction count
+// ---------------------------------------------------------------------
+reg [15:0] trace_retire_cnt_q;
+reg        trace_trigger_q;
+
+always @(posedge clk_i or posedge rst_i) begin
+  if (rst_i) begin
+    trace_retire_cnt_q <= 16'd0;
+    trace_trigger_q    <= 1'b0;
+  end
+  else begin
+    if (!trace_trigger_q && retire_pulse_w) begin
+      trace_retire_cnt_q <= trace_retire_cnt_q + 16'd1;
+
+      // Freeze trace after 64 retired instructions
+      if (trace_retire_cnt_q == 16'd63)
+        trace_trigger_q <= 1'b1;
+    end
+  end
+end
+
+// Trace external connections
+assign trace_rd_addr_w    = trace_rd_addr_i;
+assign trace_triggered_o  = trace_triggered_w;
+assign trace_wr_ptr_o     = trace_wr_ptr_w;
+assign trace_rd_pc_o      = trace_rd_pc_w;
+assign trace_rd_instr_o   = trace_rd_instr_w;
+
+//-----------------------------------------------------------------
+// Execute
+//-----------------------------------------------------------------
 riscv_exec
 u_exec
 (
@@ -293,7 +333,9 @@ u_exec
     ,.writeback_value_o(writeback_exec_value_w)
 );
 
-
+//-----------------------------------------------------------------
+// Decode
+//-----------------------------------------------------------------
 riscv_decode
 #(
      .EXTRA_DECODE_STAGE(EXTRA_DECODE_STAGE)
@@ -329,7 +371,9 @@ u_decode
     ,.fetch_out_instr_invalid_o(fetch_instr_invalid_w)
 );
 
-
+//-----------------------------------------------------------------
+// MMU
+//-----------------------------------------------------------------
 riscv_mmu
 #(
      .MEM_CACHE_ADDR_MAX(MEM_CACHE_ADDR_MAX)
@@ -398,7 +442,9 @@ u_mmu
     ,.lsu_in_store_fault_o(mmu_store_fault_w)
 );
 
-
+//-----------------------------------------------------------------
+// LSU
+//-----------------------------------------------------------------
 riscv_lsu
 #(
      .MEM_CACHE_ADDR_MAX(MEM_CACHE_ADDR_MAX)
@@ -442,6 +488,9 @@ u_lsu
     ,.stall_o(lsu_stall_w)
 );
 
+//-----------------------------------------------------------------
+// CSR
+//-----------------------------------------------------------------
 riscv_csr
 #(
      .SUPPORT_SUPER(SUPPORT_SUPER)
@@ -493,12 +542,12 @@ u_csr
 );
 
 // ---------------------------------------------------------------------
-// Telemetry counters (already there)
+// Telemetry counters
 // ---------------------------------------------------------------------
 telemetry_counters u_tlm_cnt (
   .clk          (clk_i),
   .rst_n        (~rst_i),
-  .cycle_en     (1'b1),           // tie high unless you add a freeze mode
+  .cycle_en     (1'b1),
   .retire_pulse (retire_pulse_w),
   .stall_cycle  (stall_cycle_w),
   .mcycle       (tlm_mcycle_w),
@@ -511,10 +560,8 @@ assign tlm_minstret_o = tlm_minstret_w;
 assign tlm_stall_o    = tlm_stall_w;
 
 // ---------------------------------------------------------------------
-// Trace buffer instance (PC + opcode at retire)
+// Trace buffer (PC + opcode at retire)
 // ---------------------------------------------------------------------
-// Trigger choice for now: freeze when an interrupt is taken.
-// You can later change trigger_i to a SW-controlled bit.
 trace_buffer #(
   .DEPTH    (TRACE_DEPTH),
   .PTR_BITS (TRACE_PTR_BITS)
@@ -522,11 +569,11 @@ trace_buffer #(
   .clk_i          (clk_i),
   .rst_ni         (~rst_i),
 
-  .enable_i       (1'b1),            // always logging for now
-  .trigger_i      (take_interrupt_w),// freeze when interrupt taken
-  .retire_valid_i (retire_pulse_w),  // one per retired instruction
-  .pc_i           (opcode_pc_w),     // PC of instruction
-  .instr_i        (opcode_opcode_w), // opcode
+  .enable_i       (1'b1),
+  .trigger_i      (trace_trigger_q),
+  .retire_valid_i (retire_pulse_w),
+  .pc_i           (opcode_pc_w),
+  .instr_i        (opcode_opcode_w),
 
   .triggered_o    (trace_triggered_w),
   .wr_ptr_o       (trace_wr_ptr_w),
@@ -536,8 +583,9 @@ trace_buffer #(
   .rd_instr_o     (trace_rd_instr_w)
 );
 
-
-
+//-----------------------------------------------------------------
+// Multiplier
+//-----------------------------------------------------------------
 riscv_multiplier
 u_mul
 (
@@ -557,10 +605,12 @@ u_mul
 
     // Outputs
     ,.writeback_value_o(writeback_mul_value_w)
-    ,.busy_o(mul_busy_w)   // NEW: drive mul_busy_w for mul_busy_cycles counter
+    ,.busy_o(mul_busy_w)
 );
 
-
+//-----------------------------------------------------------------
+// Divider
+//-----------------------------------------------------------------
 riscv_divider
 u_div
 (
@@ -582,6 +632,9 @@ u_div
     ,.writeback_value_o(writeback_div_value_w)
 );
 
+//-----------------------------------------------------------------
+// Issue
+//-----------------------------------------------------------------
 riscv_issue
 #(
      .SUPPORT_MULDIV         (SUPPORT_MULDIV)
@@ -693,9 +746,9 @@ u_issue
     ,.stall_cycle_o(stall_cycle_w)
 );
 
-
-
-
+//-----------------------------------------------------------------
+// Fetch
+//-----------------------------------------------------------------
 riscv_fetch
 #(
      .SUPPORT_MMU(SUPPORT_MMU)
@@ -729,7 +782,5 @@ u_fetch
     ,.icache_priv_o(fetch_in_priv_w)
     ,.squash_decode_o(squash_decode_w)
 );
-
-
 
 endmodule

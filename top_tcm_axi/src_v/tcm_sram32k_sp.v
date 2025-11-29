@@ -33,9 +33,9 @@ module tcm_sram32k_sp
     reg  [NUM_BANKS-1:0] web_n_q;
 
     // Data and write mask buses (per bank)
-    reg  [63:0] D_bus   [0:NUM_BANKS-1];
-    reg  [63:0] BWEB_bus[0:NUM_BANKS-1];
-    wire [63:0] Q_bus   [0:NUM_BANKS-1];
+    reg  [63:0] D_bus    [0:NUM_BANKS-1];
+    reg  [63:0] BWEB_bus [0:NUM_BANKS-1];
+    wire [63:0] Q_bus    [0:NUM_BANKS-1];
 
     integer i;
 
@@ -45,10 +45,10 @@ module tcm_sram32k_sp
     always @* begin
         // Defaults: all banks disabled, no writes
         for (i = 0; i < NUM_BANKS; i = i + 1) begin
-            ceb_n_q[i]    = 1'b1;          // disabled
-            web_n_q[i]    = 1'b1;          // read
-            D_bus[i]      = 64'd0;
-            BWEB_bus[i]   = {64{1'b1}};    // no bit written (active low)
+            ceb_n_q[i]  = 1'b1;          // disabled
+            web_n_q[i]  = 1'b1;          // read
+            D_bus[i]    = 64'd0;
+            BWEB_bus[i] = {64{1'b1}};    // no bit written (active low)
         end
 
         // Selected bank
@@ -66,12 +66,12 @@ module tcm_sram32k_sp
                 D_bus[bank_sel][31:0] = wdata_i;
 
                 // Map 4 byte strobes to 8 bits each in BWEB (active low)
-                BWEB_bus[bank_sel][7:0]   = wstrb_i[0] ? 8'h00 : 8'hFF;
-                BWEB_bus[bank_sel][15:8]  = wstrb_i[1] ? 8'h00 : 8'hFF;
-                BWEB_bus[bank_sel][23:16] = wstrb_i[2] ? 8'h00 : 8'hFF;
-                BWEB_bus[bank_sel][31:24] = wstrb_i[3] ? 8'h00 : 8'hFF;
+                BWEB_bus[bank_sel][7:0]    = wstrb_i[0] ? 8'h00 : 8'hFF;
+                BWEB_bus[bank_sel][15:8]   = wstrb_i[1] ? 8'h00 : 8'hFF;
+                BWEB_bus[bank_sel][23:16]  = wstrb_i[2] ? 8'h00 : 8'hFF;
+                BWEB_bus[bank_sel][31:24]  = wstrb_i[3] ? 8'h00 : 8'hFF;
 
-                // Upper 32 bits unchanged (mask = 0xFF)
+                // Upper 32 bits unchanged
             end
             else begin
                 // upper 32 bits of 64-bit word
@@ -97,7 +97,7 @@ module tcm_sram32k_sp
                 .SLP    (1'b0),
                 .DSLP   (1'b0),
                 .SD     (1'b0),
-                .PUDELAY(),           // unused
+                .PUDELAY(),
 
                 // Main port
                 .CLK    (clk_i),
@@ -107,9 +107,10 @@ module tcm_sram32k_sp
                 .D      (D_bus[g]),   // [63:0]
                 .BWEB   (BWEB_bus[g]),// [63:0] active low
 
-                // Test mode selects (no test)
-                .RTSEL  (2'b01),
+                // Test mode selects – use normal segment/mux config
+                .RTSEL (2'b01),
                 .WTSEL  (2'b01),
+
                 .Q      (Q_bus[g])    // [63:0]
             );
         end

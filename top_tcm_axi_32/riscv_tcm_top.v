@@ -1,55 +1,14 @@
 //-----------------------------------------------------------------
-//                         RISC-V Top
-//                            V0.6
-//                     Ultra-Embedded.com
-//                     Copyright 2014-2019
-//
-//                   admin@ultra-embedded.com
-//
-//                       License: BSD
-//-----------------------------------------------------------------
-//
-// Copyright (c) 2014, Ultra-Embedded.com
-// All rights reserved.
-// 
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions 
-// are met:
-//   - Redistributions of source code must retain the above copyright
-//     notice, this list of conditions and the following disclaimer.
-//   - Redistributions in binary form must reproduce the above copyright
-//     notice, this list of conditions and the following disclaimer 
-//     in the documentation and/or other materials provided with the 
-//     distribution.
-//   - Neither the name of the author nor the names of its contributors 
-//     may be used to endorse or promote products derived from this 
-//     software without specific prior written permission.
-// 
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
-// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
-// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
-// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE 
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
-// BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF 
-// THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
-// SUCH DAMAGE.
-//-----------------------------------------------------------------
-
-//-----------------------------------------------------------------
-//                          Generated File
+//                         RISC-V Topesh newest with Trace Ports
 //-----------------------------------------------------------------
 module riscv_tcm_top
 //-----------------------------------------------------------------
 // Params
 //-----------------------------------------------------------------
 #(
-     parameter BOOT_VECTOR      = 32'h00002000
-    ,parameter CORE_ID          = 0
-    ,parameter TCM_MEM_BASE     = 0
+     parameter BOOT_VECTOR        = 32'h00002000
+    ,parameter CORE_ID            = 0
+    ,parameter TCM_MEM_BASE       = 0
     ,parameter MEM_CACHE_ADDR_MIN = 0
     ,parameter MEM_CACHE_ADDR_MAX = 32'hffffffff
 )
@@ -108,8 +67,17 @@ module riscv_tcm_top
     ,output [  1:0]  axi_t_rresp_o
     ,output [  3:0]  axi_t_rid_o
     ,output          axi_t_rlast_o
+
+    // -------- Trace buffer external ports (NEW) --------
+    ,output          trace_triggered_o
+    ,output [5:0]    trace_wr_ptr_o
+    ,input  [5:0]    trace_rd_addr_i
+    ,output [63:0]   trace_rd_data_o
 );
 
+//-----------------------------------------------------------------
+// Wires
+//-----------------------------------------------------------------
 wire  [ 31:0]  ifetch_pc_w;
 wire  [ 31:0]  dport_tcm_data_rd_w;
 wire           dport_tcm_cacheable_w;
@@ -163,7 +131,15 @@ wire           dport_axi_flush_w;
 wire           dport_tcm_error_w;
 wire           dport_accept_w;
 
+// Trace wiring from core
+wire        trace_triggered_w;
+wire [5:0]  trace_wr_ptr_w;
+wire [31:0] trace_rd_pc_w;
+wire [31:0] trace_rd_instr_w;
 
+//-----------------------------------------------------------------
+// Core
+//-----------------------------------------------------------------
 riscv_core
 #(
      .MEM_CACHE_ADDR_MIN(MEM_CACHE_ADDR_MIN)
@@ -183,7 +159,7 @@ u_core
     ,.mem_i_valid_i(ifetch_valid_w)
     ,.mem_i_error_i(ifetch_error_w)
     ,.mem_i_inst_i(ifetch_inst_w)
-    ,.intr_i(intr_i[0:0])
+    ,.intr_i(intr_i[0])
     ,.reset_vector_i(boot_vector_w)
     ,.cpu_id_i(cpu_id_w)
 
@@ -201,9 +177,28 @@ u_core
     ,.mem_i_flush_o(ifetch_flush_w)
     ,.mem_i_invalidate_o(ifetch_invalidate_w)
     ,.mem_i_pc_o(ifetch_pc_w)
+
+    // Telemetry – leave unconnected if you don't care here
+    ,.tlm_mcycle_o()
+    ,.tlm_minstret_o()
+    ,.tlm_stall_o()
+
+    // ---- Trace ports from core ----
+    ,.trace_triggered_o (trace_triggered_w)
+    ,.trace_wr_ptr_o    (trace_wr_ptr_w)
+    ,.trace_rd_addr_i   (trace_rd_addr_i)
+    ,.trace_rd_pc_o     (trace_rd_pc_w)
+    ,.trace_rd_instr_o  (trace_rd_instr_w)
 );
 
+// Export trace bundle
+assign trace_triggered_o = trace_triggered_w;
+assign trace_wr_ptr_o    = trace_wr_ptr_w;
+assign trace_rd_data_o   = {trace_rd_pc_w, trace_rd_instr_w};
 
+//-----------------------------------------------------------------
+// D-port mux
+//-----------------------------------------------------------------
 dport_mux
 #(
      .TCM_MEM_BASE(TCM_MEM_BASE)
@@ -259,7 +254,9 @@ u_dmux
     ,.mem_ext_flush_o(dport_axi_flush_w)
 );
 
-
+//-----------------------------------------------------------------
+// TCM (ITCM + DTCM + AXI T slave)
+//-----------------------------------------------------------------
 tcm_mem
 u_tcm
 (
@@ -319,7 +316,9 @@ u_tcm
     ,.axi_rlast_o(axi_t_rlast_o)
 );
 
-
+//-----------------------------------------------------------------
+// External AXI master (for d-port)
+//-----------------------------------------------------------------
 dport_axi
 u_axi
 (
@@ -360,7 +359,5 @@ u_axi
     ,.axi_araddr_o(axi_i_araddr_o)
     ,.axi_rready_o(axi_i_rready_o)
 );
-
-
 
 endmodule
