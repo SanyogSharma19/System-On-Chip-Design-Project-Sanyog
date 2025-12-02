@@ -1,12 +1,12 @@
 //-----------------------------------------------------------------
-//                         RISC-V Topesh newest with Trace Ports
+//                         RISC-V Topesh newest gnsh with Trace Ports
 //-----------------------------------------------------------------
 module riscv_tcm_top
 //-----------------------------------------------------------------
 // Params
 //-----------------------------------------------------------------
 #(
-     parameter BOOT_VECTOR        = 32'h00002000
+     parameter BOOT_VECTOR        = 32'h00000000   // <--- changed from 0x00002000
     ,parameter CORE_ID            = 0
     ,parameter TCM_MEM_BASE       = 0
     ,parameter MEM_CACHE_ADDR_MIN = 0

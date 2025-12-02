@@ -1,42 +1,5 @@
 //-----------------------------------------------------------------
-//                         RISC-V Core new ones
-//                            V1.0.1
-//                     Ultra-Embedded.com
-//                     Copyright 2014-2019
-//
-//                   admin@ultra-embedded.com
-//
-//                       License: BSD
-//-----------------------------------------------------------------
-//
-// Copyright (c) 2014-2019, Ultra-Embedded.com
-// All rights reserved.
-// 
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions 
-// are met:
-//   - Redistributions of source code must retain the above copyright
-//     notice, this list of conditions and the following disclaimer.
-//   - Redistributions in binary form must reproduce the above copyright
-//     notice, this list of conditions and the following disclaimer 
-//     in the documentation and/or other materials provided with the 
-//     distribution.
-//   - Neither the name of the author nor the names of its contributors 
-//     may be used to endorse or promote products derived from this 
-//     software without specific prior written permission.
-// 
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
-// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
-// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
-// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE 
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
-// BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF 
-// THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
-// SUCH DAMAGE.
+//                         RISC-V Core with Trace (fetch-based)
 //-----------------------------------------------------------------
 
 module riscv_core
@@ -230,7 +193,6 @@ wire           mmu_lsu_accept_w;
 wire  [ 31:0]  lsu_opcode_rb_operand_w;
 wire           mmu_sum_w;
 wire  [ 31:0]  writeback_exec_value_w;
-
 wire  [  4:0]  lsu_opcode_ra_idx_w;
 wire  [ 31:0]  csr_writeback_exception_pc_w;
 wire           mmu_store_fault_w;
@@ -245,7 +207,7 @@ wire [63:0]   tlm_minstret_w;
 wire [63:0]   tlm_stall_w;
 
 // --- NEW: Multiplier busy signal & counter ---
-wire          mul_busy_w;          // from riscv_multiplier.u_mul
+wire          mul_busy_w;
 reg  [31:0]   mul_busy_cycles_q;
 
 // --- Trace buffer signals ---
@@ -269,26 +231,24 @@ begin
         mul_busy_cycles_q <= mul_busy_cycles_q + 32'd1;
 end
 
-// ---------------------------------------------------------------------
-// Trace trigger based on retired instruction count
-// ---------------------------------------------------------------------
-reg [15:0] trace_retire_cnt_q;
+//---------------------------------------------------------------------
+// Trace trigger based on FETCH (first 64 valid fetches)
+//---------------------------------------------------------------------
+reg [15:0] trace_sample_cnt_q;
 reg        trace_trigger_q;
 
 always @(posedge clk_i or posedge rst_i) begin
-  if (rst_i) begin
-    trace_retire_cnt_q <= 16'd0;
-    trace_trigger_q    <= 1'b0;
-  end
-  else begin
-    if (!trace_trigger_q && retire_pulse_w) begin
-      trace_retire_cnt_q <= trace_retire_cnt_q + 16'd1;
-
-      // Freeze trace after 64 retired instructions
-      if (trace_retire_cnt_q == 16'd63)
-        trace_trigger_q <= 1'b1;
+    if (rst_i) begin
+        trace_sample_cnt_q <= 16'd0;
+        trace_trigger_q    <= 1'b0;
     end
-  end
+    else begin
+        if (!trace_trigger_q && fetch_valid_w) begin
+            trace_sample_cnt_q <= trace_sample_cnt_q + 16'd1;
+            if (trace_sample_cnt_q == TRACE_DEPTH-1)
+                trace_trigger_q <= 1'b1;
+        end
+    end
 end
 
 // Trace external connections
@@ -520,8 +480,6 @@ u_csr
     ,.cpu_id_i(cpu_id_i)
     ,.reset_vector_i(reset_vector_i)
     ,.interrupt_inhibit_i(interrupt_inhibit_w)
-
-    // NEW: mul_busy performance counter input
     ,.mul_busy_cycles_i(mul_busy_cycles_q)
 
     // Outputs
@@ -560,7 +518,7 @@ assign tlm_minstret_o = tlm_minstret_w;
 assign tlm_stall_o    = tlm_stall_w;
 
 // ---------------------------------------------------------------------
-// Trace buffer (PC + opcode at retire)
+// Trace buffer (PC + opcode at FETCH)
 // ---------------------------------------------------------------------
 trace_buffer #(
   .DEPTH    (TRACE_DEPTH),
@@ -571,9 +529,9 @@ trace_buffer #(
 
   .enable_i       (1'b1),
   .trigger_i      (trace_trigger_q),
-  .retire_valid_i (retire_pulse_w),
-  .pc_i           (opcode_pc_w),
-  .instr_i        (opcode_opcode_w),
+  .retire_valid_i (fetch_valid_w),
+  .pc_i           (fetch_pc_w),
+  .instr_i        (fetch_instr_w),
 
   .triggered_o    (trace_triggered_w),
   .wr_ptr_o       (trace_wr_ptr_w),

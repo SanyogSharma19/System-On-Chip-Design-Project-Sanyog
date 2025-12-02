@@ -1,7 +1,8 @@
-//-----------------------------------------------------------------
+//-----------------------------------------------------------------chal pls yar
 // 32KB Single-Port TCM using 32 x 1KB TSMC SRAM macros
 //   - Logical size: 8k x 32-bit = 32KB
 //   - Built from TS1N16ADFPCLLLVTA128X64M4SWSHOD (128 x 64-bit)
+//   - SIM_TCM_BEHAV: simple behavioral RAM + $readmemh
 //-----------------------------------------------------------------
 module tcm_sram32k_sp
 (
@@ -13,7 +14,52 @@ module tcm_sram32k_sp
     output reg [31:0] rdata_o   // Read data (1-cycle latency)
 );
 
-    // 32 banks x 1KB = 32KB
+`ifdef SIM_TCM_BEHAV
+    //-------------------------------------------------------------
+    // Simple behavioral model for simulation
+    //   - 8k x 32-bit = 32KB
+    //   - Preloaded from program.hex
+    //-------------------------------------------------------------
+    localparam integer DEPTH_WORDS = 8192; // 32KB / 4
+
+    reg [31:0] mem [0:DEPTH_WORDS-1];
+    integer j;
+
+    initial begin
+        $display("tcm_sram32k_sp (SIM): Preloading ITCM from program.hex");
+
+        // Optional: init to RISC-V NOP = 0x00000013
+        for (j = 0; j < DEPTH_WORDS; j = j + 1)
+            mem[j] = 32'h00000013;
+
+        // Load program
+        $readmemh("program.hex", mem);
+
+        // Quick sanity check
+        if (^mem[0] === 1'bX)
+            $display("tcm_sram32k_sp (SIM) WARNING: mem[0] is X after readmemh - check program.hex path/format");
+        else
+            $display("tcm_sram32k_sp (SIM): mem[0]=0x%08x mem[1]=0x%08x", mem[0], mem[1]);
+    end
+
+    // 1-cycle read, byte-write enable
+    always @(posedge clk_i) begin
+        // Read
+        rdata_o <= mem[addr_i];
+
+        // Write
+        if (we_i) begin
+            if (wstrb_i[0]) mem[addr_i][7:0]   <= wdata_i[7:0];
+            if (wstrb_i[1]) mem[addr_i][15:8]  <= wdata_i[15:8];
+            if (wstrb_i[2]) mem[addr_i][23:16] <= wdata_i[23:16];
+            if (wstrb_i[3]) mem[addr_i][31:24] <= wdata_i[31:24];
+        end
+    end
+
+`else
+    //-------------------------------------------------------------
+    // ORIGINAL: 32 banks x 1KB = 32KB implemented with TSMC SRAM
+    //-------------------------------------------------------------
     localparam NUM_BANKS = 32;
 
     //-------------------------------------------------------------
@@ -108,7 +154,7 @@ module tcm_sram32k_sp
                 .BWEB   (BWEB_bus[g]),// [63:0] active low
 
                 // Test mode selects – use normal segment/mux config
-                .RTSEL (2'b01),
+                .RTSEL  (2'b01),
                 .WTSEL  (2'b01),
 
                 .Q      (Q_bus[g])    // [63:0]
@@ -125,5 +171,7 @@ module tcm_sram32k_sp
     always @(posedge clk_i) begin
         rdata_o <= rdata_32;
     end
+
+`endif // SIM_TCM_BEHAV
 
 endmodule
